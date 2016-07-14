@@ -1,7 +1,8 @@
 var mongoose = require('mongoose');
 
 var PartySchema = new mongoose.Schema({
-	//host: {type: mongoose.Schema.Types.ObjectId, ref: 'User'},
+	host: String,
+	guests: [String],
   name: String,
   lat: Number,
   lng: Number,

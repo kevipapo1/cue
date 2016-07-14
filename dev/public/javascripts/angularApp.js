@@ -3,27 +3,17 @@ var app = angular.module('flapperNews', ['ui.router']);
 app.config(['$stateProvider', '$urlRouterProvider',
 function($stateProvider, $urlRouterProvider) {
 
-	$stateProvider.state('cue', {
-		url : '/cue',
-		templateUrl : '/cue.html',
-		controller : 'CueCtrl',
-		resolve : {
-			postPromise : ['parties',
-			function(parties) {
-				return parties.getAll();
-			}]
+	$stateProvider.state('welcome', {
+		url : '/',
+		templateUrl : '/welcome.html',
+		controller : 'WelcomeCtrl',
+		onEnter : ['$state', 'auth',
+		function($state, auth) {
+			if (auth.isLoggedIn()) {
+				$state.go('parties');
+			}
+		}]
 
-		}
-	}).state('parties', {
-		url : '/parties/:id',
-		templateUrl : '/parties.html',
-		controller : 'PartiesCtrl',
-		resolve : {
-			party : ['$stateParams', 'parties', 
-			function($stateParams, parties) {
-				return parties.get($stateParams.id);
-			}]
-		}
 	}).state('login', {
 		url : '/login',
 		templateUrl : '/login.html',
@@ -31,7 +21,7 @@ function($stateProvider, $urlRouterProvider) {
 		onEnter : ['$state', 'auth',
 		function($state, auth) {
 			if (auth.isLoggedIn()) {
-				$state.go('cue');
+				$state.go('parties');
 			}
 		}]
 
@@ -42,13 +32,46 @@ function($stateProvider, $urlRouterProvider) {
 		onEnter : ['$state', 'auth',
 		function($state, auth) {
 			if (auth.isLoggedIn()) {
-				$state.go('cue');
+				$state.go('parties');
 			}
 		}]
 
+	}).state('parties', {
+		url : '/parties',
+		templateUrl : '/parties.html',
+		controller : 'PartiesCtrl',
+		onEnter : ['$state', 'auth',
+		function($state, auth) {
+			if (!auth.isLoggedIn()) {
+				$state.go('welcome');
+			}
+		}],
+		resolve : {
+			postPromise : ['parties',
+			function(parties) {
+				return parties.getAll();
+			}]
+
+		}
+	}).state('party', {
+		url : '/parties/:id',
+		templateUrl : '/party.html',
+		controller : 'PartyCtrl',
+		onEnter : ['$state', 'auth',
+		function($state, auth) {
+			if (!auth.isLoggedIn()) {
+				$state.go('welcome');
+			}
+		}],
+		resolve : {
+			party : ['$stateParams', 'parties', 
+			function($stateParams, parties) {
+				return parties.get($stateParams.id);
+			}]
+		}
 	});
 
-	$urlRouterProvider.otherwise('cue');
+	$urlRouterProvider.otherwise('login');
 }]);
 
 app.factory('auth', ['$http', '$window',
@@ -120,9 +143,9 @@ function($http, auth) {
 	//this local factory, so the mongodb and angular data is the same
 	//sweet!
 	o.create = function(party) {
-	  return $http.post('/parties', party/*, {
+	  return $http.post('/parties', party, {
 	    headers: {Authorization: 'Bearer '+auth.getToken()}
-	  }*/).success(function(data){
+	  }).success(function(data){
 	    o.parties.push(data);
 	  });
 	};
@@ -153,23 +176,23 @@ function($http, auth) {
 	};
 	//comments, once again using express
 	o.addRequest = function(id, request) {
-	  return $http.post('/parties/' + id + '/requests', request/*, {
+	  return $http.post('/parties/' + id + '/requests', request, {
 	    headers: {Authorization: 'Bearer '+auth.getToken()}
-	  }*/);
+	  });
 	};
 	
 	o.skipRequest = function(party, request) {
-	  return $http.put('/parties/' + party._id + '/requests/'+ request._id + '/skip', null/*, {
+	  return $http.put('/parties/' + party._id + '/requests/'+ request._id + '/skip', null, {
 	    headers: {Authorization: 'Bearer '+auth.getToken()}
-	  }*/).success(function(data){
-	    request.skips += 1;
+	  }).success(function(data){
+			socket.emit('skip', data);
 	  });
 	};
 
 	o.setPlayed = function(party, request) {
-		return $http.put('/parties/' + party._id + '/requests/' + request._id + '/played', null/*, {
+		return $http.put('/parties/' + party._id + '/requests/' + request._id + '/played', null, {
 	    headers: {Authorization: 'Bearer '+auth.getToken()}
-	  }*/).success(function(data){
+	  }).success(function(data){
 	    request.played = true;
 	  });
 	};
@@ -184,7 +207,7 @@ function($q, parties) {
 		data: null
 	};
 
-	o.get = function(party) {
+	var get = function(party) {
 		var deferred = $q.defer();
 		var current = {
 			request: null,
@@ -202,91 +225,111 @@ function($q, parties) {
 			});
 		}
 		return deferred.promise;
-	};
+	}
 
 	o.update = function(party) {
-		var get = function(party) {
-			var deferred = $q.defer();
-			var current = {
-				request: null,
-				data: null
-			};
-			current.request = parties.getCurrentRequest(party);
-			if (!current.request) {
-				current.data = null;
-				deferred.resolve(current);
-			}
-			else {
-				SC.resolve(current.request.url).then(function(data) {
-					current.data = data;
-					deferred.resolve(current);
-				});
-			}
-			return deferred.promise;
-		}
-		get(party).then(function(current) {
+		return get(party).then(function(current) {
 			o.request = current.request;
 			o.data = current.data;
-		})
+		});
 	};
+
+	return o;
+}]);
+
+app.factory('geolocationSvc', ['$q', '$window', 
+function($q, $window) {
+	var o = {
+		lat: null,
+		lng: null
+	};
+
+	o.getLocation = function() {
+		var deferred = $q.defer();
+		if (!$window.navigator.geolocation) {
+			deferred.reject('Geolocation not supported.');
+		}
+		else {
+			$window.navigator.geolocation.getCurrentPosition(
+				function(position) {
+					deferred.resolve(position);
+				}, function(err) {
+					deferred.reject(err);
+				}
+			);
+		}
+		return deferred.promise;
+	}
 
 	return o;
 }]);
 
 
 
-app.controller('CueCtrl', ['$scope', 'parties', 'auth',
-function($scope, parties, auth) {
+app.controller('WelcomeCtrl', ['$scope', '$state',
+function($scope, $state) {
+	$scope.message = "Welcome to Cue";
+}]);
+
+app.controller('PartiesCtrl', ['$scope', '$state', 'parties', 'geolocationSvc', 'auth',
+function($scope, $state, parties, geolocationSvc, auth) {
 	$scope.parties = parties.parties;
 	$scope.isLoggedIn = auth.isLoggedIn;
 	//setting title to blank here to prevent empty posts
 	$scope.name = '';
 
+	$scope.refresh = function() {
+		parties.getAll();
+	}
+
 	$scope.createParty = function() {
 		if ($scope.name === '') {
 			return;
 		}
-		parties.create({
-			name : $scope.name,
-			lat : $scope.lat,
-			lng : $scope.lng
+		geolocationSvc.getLocation().then(function(position) {
+			parties.create({
+				name : $scope.name,
+				lat : position.coords.latitude,
+				lng : position.coords.longitude
+			}).success(function(data) {
+				socket.emit('create', auth.getToken());
+				$state.go('party', {id: data._id});
+			});
+			//clear the values
+			$scope.name = '';
 		});
-		//clear the values
-		$scope.name = '';
-		$scope.lat = '';
-		$scope.lng = '';
 	};
 }]);
 
-app.controller('PartiesCtrl', ['$scope', 'parties', 'party', 'current', 'auth',
+app.controller('PartyCtrl', ['$scope', 'parties', 'party', 'current', 'auth',
 function($scope, parties, party, current, auth) {
 	$scope.party = party;
 	$scope.current = current;
 	$scope.current.update(party);
 	$scope.playing = false;
+	$scope.results = [];
+	$scope.isHost = (party.host == auth.currentUser());
 	$scope.isLoggedIn = auth.isLoggedIn;
 
-	$scope.addRequest = function() {
+	$scope.addRequest = function(url) {
 		var name, artist;
-		SC.resolve($scope.url).then(function(data) {
+		console.log(url);
+		SC.resolve(url).then(function(data) {
 			name = data.title;
 			artist = data.user.username;
 			parties.addRequest(party._id, {
-				url : $scope.url,
+				url : url,
 				name : name,
 				artist : artist,
-				service : $scope.service,
+				service : 1
 			}).success(function(request) {
 				$scope.party.requests.push(request);
-					current.get(party).then(function(current) {
-						$scope.current = current;
-						console.log($scope.current);
-					});
+				$scope.current.update(party);
 			});
 		});
 	};
 	$scope.skip = function(request) {
-		parties.skipRequest(party, request);
+		parties.skipRequest(party, $scope.current.request);
 	};
 	$scope.play = function() {
 		if (!$scope.current.request) {
@@ -306,19 +349,32 @@ function($scope, parties, party, current, auth) {
 	$scope.playNext = function() {
 		$("#player").empty();
 		parties.setPlayed(party, $scope.current.request).success(function() {
-			parties.get(party._id).then(function(party) {
-				$scope.party = party;
-				current.get(party).then(function(current) {
-					$scope.current = current;
-					console.log($scope.current);
-					if ($scope.playing) $scope.play();
-				});
+			$scope.current.update(party).then(function() {
+				if ($scope.playing) $scope.play();
 			});
 		});
 	}
-	$scope.pause = function() {
 
+	$scope.search = function(query) {
+		SC.get('/tracks', {
+		  q: query
+		}).then(function(tracks) {
+			$scope.$apply(function() {
+				$scope.results = tracks;
+			});
+		});
 	}
+
+	socket.on('skip', function(data) {
+		if (data._id == $scope.current.request._id) {
+			$scope.$apply(function() {
+				$scope.current.request.skips++;
+			});
+			if ($scope.current.request.skips >= 3) {
+				$scope.playNext();
+			}
+		}
+	})
 
 }]);
 
@@ -330,7 +386,7 @@ function($scope, $state, auth) {
 		auth.register($scope.user).error(function(error) {
 			$scope.error = error;
 		}).then(function() {
-			$state.go('home');
+			$state.go('welcome');
 		});
 	};
 
@@ -338,7 +394,7 @@ function($scope, $state, auth) {
 		auth.logIn($scope.user).error(function(error) {
 			$scope.error = error;
 		}).then(function() {
-			$state.go('home');
+			$state.go('welcome');
 		});
 	};
 }]);
@@ -354,6 +410,5 @@ function($scope, auth) {
 		$scope.$apply(function(){
 			$scope.numConnections = n;
 		});
-		console.log($scope.numConnections);
 	});
 }]);

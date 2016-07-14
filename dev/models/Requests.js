@@ -2,7 +2,7 @@ var mongoose = require('mongoose');
 
 var RequestSchema = new mongoose.Schema({
 	party: {type: mongoose.Schema.Types.ObjectId, ref: 'Party'},
-	//requester: {type: mongoose.Schema.Types.ObjectId, ref: 'User'},
+	requester: String,
   url: String,
   name: String,
   artist: String,

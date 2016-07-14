@@ -14,6 +14,7 @@
   <script src="/socket.io/socket.io.js"></script>
   <script>
     var socket = io();
+    console.log(socket);
   </script>
 
   <script src="http://ajax.googleapis.com/ajax/libs/angularjs/1.2.19/angular.min.js"></script>
@@ -25,10 +26,10 @@
   <nav class="navbar navbar-default pull-right" ng-controller="NavCtrl">
     <ul class="nav navbar-nav">
       <li ng-show="isLoggedIn()"><a>{{ currentUser() }}</a></li>
-      <li ng-show="isLoggedIn()"><a href="" ng-click="logOut()">Log Out</a></li>
-      <li ng-hide="isLoggedIn()"><a href="/#/login">Log In</a></li>
-      <li ng-hide="isLoggedIn()"><a href="/#/register">Register</a></li>
-      <li><a href="">Connections: {{ numConnections }}</a></li>
+      <li ng-show="isLoggedIn()"><a href="#/" ng-click="logOut()">Log Out</a></li>
+      <!--li ng-hide="isLoggedIn()"><a href="/#/login">Log In</a></li>
+      <li ng-hide="isLoggedIn()"><a href="/#/register">Register</a></li-->
+      <li><a>Connections: {{ numConnections }}</a></li>
     </ul>
   </nav>
   
@@ -38,9 +39,16 @@
     </div>
   </div>
 
+  <script type="text/ng-template" id="/welcome.html">
+    <div class="page-header">
+      <h1>{{ message }}</h1>
+    </div>
 
+    <a href="#/login" class="btn btn-default" role="button">Log in</a>
+    <a href="#/register" class="btn btn-default" role="button">Register</a>
+  </script>
 
-  <script type="text/ng-template" id="/cue.html">
+  <script type="text/ng-template" id="/parties.html">
     <div class="page-header">
       <h1>Cue</h1>
     </div>
@@ -48,13 +56,14 @@
     <div ng-repeat="party in parties">
       <span style="font-size:20px;margin-left:10px">
         <a href="#/parties/{{party._id}}">
-          {{party.name}}
+          {{party.name}}: {{party.lat}}, {{party.lng}}
         </a>
         <!--span ng-show="post.author">
           posted by <a>{{post.author}}</a> |
         </span-->      
       </span>
     </div>
+    <button class="btn btn-default" ng-click="refresh()">Refresh</button>
 
     <form ng-submit="createParty()" ng-show="isLoggedIn()" style="margin-top:30px">
       <h3>Create a new party:</h3>
@@ -63,13 +72,13 @@
         <input type="text" class="form-control" placeholder="Name"  ng-model="name">
       </div>
 
-      <div class="form-group">
+      <!--div class="form-group">
         <input type="number" step="0.000001" min="-90" max="90" class="form-control" placeholder="Latitude" ng-model="lat">
       </div>
 
       <div class="form-group">
         <input type="number" step="0.000001" min="-180" max="180" class="form-control" placeholder="Longitude" ng-model="lng">
-      </div>
+      </div-->
 
       <button type="submit" class="btn btn-primary">Create</button>
     </form>
@@ -78,13 +87,16 @@
     </div>
   </script>
 
-  <script type="text/ng-template" id="/parties.html">
+  <script type="text/ng-template" id="/party.html">
     <div class="page-header">
       <h3>
         <span>
           {{party.name}}
         </span>
       </h3>
+      <h4 ng-show="isHost">
+        <b>HOST</b>
+      </h4>
     </div>
 
     <div id="player">
@@ -93,30 +105,42 @@
       <span ng-if="current.data">{{ current.data.user.username}} - {{ current.data.title }}</span>
       <br>
       <input type="button" value="Play" ng-click="play()" />
-      <input type="button" value="Skip" ng-click="playNext()" />
+      <input type="button" value="Skip" ng-click="skip(current.request)" />
+      {{ current.request.skips }}
     </div>
 
     <div ng-repeat="request in party.requests | orderBy:'time' | filter: {played: false}">
       {{request.skips}}
-      <span class="glyphicon glyphicon-fast-forward" ng-click="skip(request)"></span>
+      <!--span class="glyphicon glyphicon-fast-forward" ng-click="skip(request)"></span-->
       <span style="font-size:20px; margin-left:10px;">
         {{request.artist}} - {{request.name}} - {{request.played}}
       </span>
     </div>
 
-    <form ng-submit="addRequest()" ng-show="isLoggedIn()" style="margin-top:30px;">
-      <h3>Make a request</h3>
+    <div ng-show="isLoggedIn()">
+      <form ng-submit="search(query)" ng-show="isLoggedIn()" style="margin-top:30px;">
+        <h3>Make a request</h3>
 
-      <div class="form-group">
-        <input type="text" class="form-control" placeholder="URL" ng-model="url"></input>
+        <!--div class="form-group">
+          <input type="text" class="form-control" placeholder="URL" ng-model="url"></input>
+        </div>
+
+        <div class="form-group">
+          <input type="number" min="0" max="1" class="form-control" placeholder="Service" ng-model="service"></input>
+        </div-->
+
+        <div class="form-group">
+          <input type="text" class="form-control" placeholder="Query" ng-model="query"></input>
+        </div>
+
+        <button type="submit" class="btn btn-primary">Search</button>
+      </form>
+      <div id="results">
+        <div class="item" ng-repeat="result in results" ng-click="addRequest(result.permalink_url)">
+          {{ result.title }}
+        </div>
       </div>
-
-      <div class="form-group">
-        <input type="number" min="0" max="1" class="form-control" placeholder="Service" ng-model="service"></input>
-      </div>
-
-      <button type="submit" class="btn btn-primary">Request</button>
-    </form>
+    </div>
     <div ng-hide="isLoggedIn()">
       <h3>You need to <a href="/#/login">Log In</a> or <a href="/#/register">Register</a> before you can request songs or vote to skip.</h3>
     </div>

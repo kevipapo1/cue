@@ -141,7 +141,7 @@ router.post('/login', function(req, res, next){
     return res.status(400).json({message: 'Please fill out all fields'});
   }
 
-console.log('calling passport)');
+  console.log('calling passport');
   passport.authenticate('local', function(err, user, info){
     if(err){ return next(err); }
 
@@ -164,9 +164,9 @@ router.get('/parties', function(req, res, next) {
   });
 });
 
-router.post('/parties', /*auth,*/ function(req, res, next) {
+router.post('/parties', auth, function(req, res, next) {
   var party = new Party(req.body);
-  //party.host = req.payload.username;
+  party.host = req.payload.username;
   party.save(function(err, party) {
     if (err) { return next(err); }
     res.json(party);
@@ -191,10 +191,11 @@ router.get('/parties/:party', function(req, res, next) {
   });
 });
 
-router.post('/parties/:party/requests', /*auth,*/ function(req, res, next) {
+router.post('/parties/:party/requests', auth, function(req, res, next) {
+  console.log(req.payload);
   var request = new Request(req.body);
   request.party = req.party;
-  //request.requester = req.payload.username;
+  request.requester = req.payload.username;
   
   request.save(function(err, request){
     if(err){ return next(err); }
@@ -220,7 +221,7 @@ router.param('request', function(req, res, next, id) {
   });
 });
 
-router.put('/parties/:party/requests/:request/skip', /*auth,*/ function(req, res, next) {
+router.put('/parties/:party/requests/:request/skip', auth, function(req, res, next) {
   req.request.skip(function(err, request){
     if (err) { return next(err); }
 
@@ -228,12 +229,17 @@ router.put('/parties/:party/requests/:request/skip', /*auth,*/ function(req, res
   });
 });
 
-router.put('/parties/:party/requests/:request/played', /*auth,*/ function(req, res, next) {
-  req.request.setPlayed(function(err, request){
-    if (err) { return next(err); }
+router.put('/parties/:party/requests/:request/played', auth, function(req, res, next) {
+  if (req.party.host == req.payload.username) {
+    req.request.setPlayed(function(err, request){
+      if (err) { return next(err); }
 
-    res.json(request);
-  });
+      res.json(request);
+    }); 
+  }
+  else {
+    res.status(401);
+  }
 });
 
 module.exports = router;
