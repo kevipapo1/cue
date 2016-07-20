@@ -66,7 +66,9 @@ function($stateProvider, $urlRouterProvider) {
 		resolve : {
 			party : ['$stateParams', 'parties', 
 			function($stateParams, parties) {
-				return parties.get($stateParams.id);
+				return parties.connect($stateParams.id).then(function(res) {
+					return parties.get($stateParams.id);
+				});
 			}]
 		}
 	});
@@ -159,20 +161,20 @@ function($http, auth) {
 			return res.data;
 		});
 	};
+	o.connect = function(id) {
+		return $http.post('/parties/' + id, null, {
+			headers: {Authorization: 'Bearer ' + auth.getToken()}
+		}).then(function(res) {
+			console.log(res.data);
+		});
+	}
 	o.getCurrentRequest = function(party) {
-		var currRequest = null;
-		var currDate = null;
-		for (var i = 0; i < party.requests.length; i++) {
-			var request = party.requests[i];
-			if (!request.played) {
-				date = Date.parse(request.time);
-				if (!currRequest || date < currDate) {
-					currRequest = request;
-					currDate = date;
-				}
-			}
-		}
-		return currRequest;
+		return $http.get('/parties/' + party._id + '/requests/current', {
+			headers: {Authorization: 'Bearer ' + auth.getToken()}
+		}).then(function(res) {
+			console.log(res);
+			return res.data;
+		});
 	};
 	//comments, once again using express
 	o.addRequest = function(id, request) {
@@ -184,8 +186,6 @@ function($http, auth) {
 	o.skipRequest = function(party, request) {
 	  return $http.put('/parties/' + party._id + '/requests/'+ request._id + '/skip', null, {
 	    headers: {Authorization: 'Bearer '+auth.getToken()}
-	  }).success(function(data){
-			socket.emit('skip', data);
 	  });
 	};
 
@@ -208,22 +208,27 @@ function($q, parties) {
 	};
 
 	var get = function(party) {
+		console.log(parties);
 		var deferred = $q.defer();
 		var current = {
 			request: null,
 			data: null
 		};
-		current.request = parties.getCurrentRequest(party);
-		if (!current.request) {
-			current.data = null;
-			deferred.resolve(current);
-		}
-		else {
-			SC.resolve(current.request.url).then(function(data) {
-				current.data = data;
+		parties.getCurrentRequest(party).then(function(request) {
+			current.request = request;
+			console.log(request);
+			console.log(!request);
+			if (!request) {
+				current.data = null;
 				deferred.resolve(current);
-			});
-		}
+			}
+			else {
+				SC.resolve(request.url).then(function(data) {
+					current.data = data;
+					deferred.resolve(current);
+				});
+			}
+		});
 		return deferred.promise;
 	}
 
@@ -259,6 +264,37 @@ function($q, $window) {
 			);
 		}
 		return deferred.promise;
+	}
+
+	return o;
+}]);
+
+app.factory('soundcloudSvc', [
+function() {
+	var o = {};
+
+	SC.initialize({
+    client_id: '380a8297f1c8b75c7705bfde9bb6f44f'
+  });
+
+	o.search = function(query) {
+		return SC.get('/tracks', {
+		  q: query
+		}).then(function(tracks) {
+			return tracks;
+		});
+	}
+
+	o.generateRequest = function(url) {
+		return SC.resolve(url).then(function(data) {
+			var request = {
+				url : url,
+				name : data.title,
+				artist : data.user.username,
+				service : 1
+			};
+			return request;
+		});
 	}
 
 	return o;
@@ -301,78 +337,93 @@ function($scope, $state, parties, geolocationSvc, auth) {
 	};
 }]);
 
-app.controller('PartyCtrl', ['$scope', 'parties', 'party', 'current', 'auth',
-function($scope, parties, party, current, auth) {
+app.controller('PartyCtrl', ['$scope', 'parties', 'party', 'current', 'soundcloudSvc', 'auth',
+function($scope, parties, party, current, soundcloudSvc, auth) {
 	$scope.party = party;
 	$scope.current = current;
 	$scope.current.update(party);
 	$scope.playing = false;
 	$scope.results = [];
-	$scope.isHost = (party.host == auth.currentUser());
+
 	$scope.isLoggedIn = auth.isLoggedIn;
+	$scope.isHost = (party.host == auth.currentUser());
+	$scope.isSkipped = function() {
+		if ($scope.current.request)
+			return $scope.current.request.skips.indexOf(auth.currentUser()) >= 0;
+		else
+			return false;
+	};
 
 	$scope.addRequest = function(url) {
-		var name, artist;
-		console.log(url);
-		SC.resolve(url).then(function(data) {
-			name = data.title;
-			artist = data.user.username;
-			parties.addRequest(party._id, {
-				url : url,
-				name : name,
-				artist : artist,
-				service : 1
-			}).success(function(request) {
+		soundcloudSvc.generateRequest(url).then(function(request) {
+			parties.addRequest(party._id, request).success(function(request) {
 				$scope.party.requests.push(request);
 				$scope.current.update(party);
 			});
 		});
 	};
-	$scope.skip = function(request) {
-		parties.skipRequest(party, $scope.current.request);
+	$scope.skip = function() {
+		if ($scope.current.request) {
+			parties.skipRequest(party, $scope.current.request);
+		}
 	};
 	$scope.play = function() {
-		if (!$scope.current.request) {
-			$scope.playing = false;
-			return;
+		if ($scope.isHost && $scope.current.request) {
+			$scope.playing = true;
+			var track_url = $scope.current.request.url;
+			SC.oEmbed(track_url, { auto_play: true }).then(function(oEmbed) {
+				var widget = $(oEmbed.html).attr("id", "widget");
+				$("#player").append(widget);
+				SC.Widget("widget").bind(SC.Widget.Events.FINISH, function() {
+					$scope.playNext();
+				});
+			});	
 		}
-		$scope.playing = true;
-		var track_url = $scope.current.request.url;
-		SC.oEmbed(track_url, { auto_play: true }).then(function(oEmbed) {
-			var widget = $(oEmbed.html).attr("id", "widget");
-			$("#player").append(widget);
-			SC.Widget("widget").bind(SC.Widget.Events.FINISH, function() {
-				$scope.playNext();
-			});
-		});
+		else {
+			$scope.playing = false;
+		}
 	}
 	$scope.playNext = function() {
+		console.log("playNext");
 		$("#player").empty();
-		parties.setPlayed(party, $scope.current.request).success(function() {
-			$scope.current.update(party).then(function() {
-				if ($scope.playing) $scope.play();
-			});
-		});
+		if ($scope.isHost && $scope.current.request) {
+			parties.setPlayed(party, $scope.current.request);	
+		}
 	}
 
 	$scope.search = function(query) {
-		SC.get('/tracks', {
-		  q: query
-		}).then(function(tracks) {
+		soundcloudSvc.search(query).then(function(tracks) {
 			$scope.$apply(function() {
 				$scope.results = tracks;
 			});
 		});
 	}
 
+	$scope.refresh = function() {
+		return parties.get(party._id).then(function(data) {
+			$scope.party = data;
+		});
+	}
+
 	socket.on('skip', function(data) {
 		if (data._id == $scope.current.request._id) {
 			$scope.$apply(function() {
-				$scope.current.request.skips++;
+				$scope.current.request.skips = data.skips;
 			});
-			if ($scope.current.request.skips >= 3) {
+			if ($scope.current.request.skips.length >= 2) {
 				$scope.playNext();
 			}
+		}
+	});
+
+	socket.on('played', function(party) {
+		if (party._id == $scope.party._id) {
+			$scope.refresh();
+			$scope.current.update(party).then(function() {
+				if ($scope.playing) {
+					$scope.play();
+				}
+			});
 		}
 	})
 

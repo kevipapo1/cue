@@ -6,21 +6,31 @@
   <script src="https://ajax.googleapis.com/ajax/libs/jquery/1.12.4/jquery.min.js"></script>
   <script src="https://connect.soundcloud.com/sdk/sdk-3.1.2.js"></script>
   <script src="https://w.soundcloud.com/player/api.js"></script>
-  <script>
+  <!--script>
     SC.initialize({
       client_id: '380a8297f1c8b75c7705bfde9bb6f44f'
     });
-  </script>
+  </script-->
   <script src="/socket.io/socket.io.js"></script>
   <script>
     var socket = io();
-    console.log(socket);
+    socket.on('test', function(message) {
+      console.log(message);
+    });
   </script>
 
   <script src="http://ajax.googleapis.com/ajax/libs/angularjs/1.2.19/angular.min.js"></script>
   <script src="//cdnjs.cloudflare.com/ajax/libs/angular-ui-router/0.2.10/angular-ui-router.js"></script>
   <script src="javascripts/angularApp.js"></script>
-  <style> .glyphicon-fast-forward { cursor:pointer } </style>
+  <style>
+    .glyphicon-fast-forward {
+      cursor:pointer
+    }
+
+    .selected {
+      color: blue;
+    }
+  </style>
 </head>
 <body ng-app="flapperNews">
   <nav class="navbar navbar-default pull-right" ng-controller="NavCtrl">
@@ -97,6 +107,9 @@
       <h4 ng-show="isHost">
         <b>HOST</b>
       </h4>
+      <h5>
+        <span ng-repeat="guest in party.guests">{{guest}}<span ng-hide="$last">, </span></span>
+      </h5>
     </div>
 
     <div id="player">
@@ -104,13 +117,15 @@
     <div style="text-align: center;">
       <span ng-if="current.data">{{ current.data.user.username}} - {{ current.data.title }}</span>
       <br>
-      <input type="button" value="Play" ng-click="play()" />
-      <input type="button" value="Skip" ng-click="skip(current.request)" />
+      <span class="glyphicon glyphicon-thumbs-down" ng-class="{'selected': isSkipped()}" ng-click="skip(current.request)" />
+      <span ng-show="isHost" class="glyphicon glyphicon-play" ng-click="play()" />
+      <span ng-show="isHost" class="glyphicon glyphicon-fast-forward" ng-click="playNext()" />
+      <br>
       {{ current.request.skips }}
     </div>
 
     <div ng-repeat="request in party.requests | orderBy:'time' | filter: {played: false}">
-      {{request.skips}}
+      <!--{{request.skips}}-->
       <!--span class="glyphicon glyphicon-fast-forward" ng-click="skip(request)"></span-->
       <span style="font-size:20px; margin-left:10px;">
         {{request.artist}} - {{request.name}} - {{request.played}}
@@ -140,6 +155,7 @@
           {{ result.title }}
         </div>
       </div>
+      <button class="btn btn-primary" ng-click="refresh()">Refresh</button>
     </div>
     <div ng-hide="isLoggedIn()">
       <h3>You need to <a href="/#/login">Log In</a> or <a href="/#/register">Register</a> before you can request songs or vote to skip.</h3>

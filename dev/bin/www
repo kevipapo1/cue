@@ -2,7 +2,9 @@
 var debug = require('debug')('flapper-news');
 var app = require('../app');
 
-var http = require('http').Server(app);
+var express = require('express');
+
+/*var http = require('http').Server(app);
 var io = require('socket.io')(http);
 var numConnections = 0;
 io.on('connection', function(socket){
@@ -19,11 +21,11 @@ io.on('connection', function(socket){
   socket.on('create', function(token) {
     console.log(token);
   });
-});
+});*/
 
 app.set('port', process.env.PORT || 3000);
 
-var server = http.listen(app.get('port'), function() {
+var server = app.get('http').listen(app.get('port'), function() {
   debug('Express server listening on port ' + server.address().port);
   console.log("Listening on port " + server.address().port);
 });

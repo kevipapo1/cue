@@ -26,8 +26,25 @@ require('./models/Requests');
 require('./models/Parties');
 require('./config/passport');
 
-var routes = require('./routes/index');
+var http = require('http').Server(app);
+var io = require('socket.io')(http);
+var routes = require('./routes/index')(io);
 var users = require('./routes/users');
+app.set('http', http);
+
+var numConnections = 0;
+io.on('connection', function(socket){
+  console.log("socket id: " + socket.id);
+  numConnections++
+  io.emit('connected', numConnections);
+  socket.on('disconnect', function(){
+    numConnections--;
+    io.emit('connected', numConnections);
+  });
+  socket.on('played', function(party) {
+    io.emit('played', party);
+  })
+});
 
 // view engine setup
 app.set('views', path.join(__dirname, 'views'));
