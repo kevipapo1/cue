@@ -24,7 +24,7 @@ var returnRouter = function(io) {
     res.json({message: "Success"});
   });
 
-  router.get('/posts', function(req, res, next) {
+  /*router.get('/posts', function(req, res, next) {
     Post.find(function(err, posts){
       if(err){ 
         return next(err);
@@ -122,7 +122,7 @@ var returnRouter = function(io) {
 
       res.json(comment);
     });
-  });
+  });*/
 
   router.post('/register', function(req, res, next){
     if(!req.body.username || !req.body.password){
@@ -142,19 +142,30 @@ var returnRouter = function(io) {
     });
   });
 
-  router.post('/login', function(req, res, next){
-    if(!req.body.username || !req.body.password){
+  router.post('/login', function(req, res, next) {
+    console.log(req.body);
+    if(!req.body.username || !req.body.password) {
       return res.status(400).json({message: 'Please fill out all fields'});
+    }
+    else if (!req.body.socket) {
+      return res.status(400).json({message: 'Socket missing'});
     }
 
     console.log('calling passport');
     passport.authenticate('local', function(err, user, info){
-      if(err){ return next(err); }
+      if (err) { return next(err); }
 
-      console.log(user);
-
-      if(user){
-        return res.json({token: user.generateJWT()});
+      if (user) {
+        var action = {$set: {'socket': req.body.socket}};
+        User.findByIdAndUpdate(
+          user._id,
+          action,
+          function(err, user) {
+            if (err) { return next(err); }
+            console.log(user);
+            return res.json({token: user.generateJWT()});
+          }
+        );
       } else {
         return res.status(401).json(info);
       }
@@ -199,15 +210,24 @@ var returnRouter = function(io) {
     });
   });
 
+  /*var removeGuest = function(username, cb) {
+    var query = {"guests": username};
+    var action = {$pullAll: {"guests": [username]}};
+    Party.update(query, action, {multi: true}, cb);
+  };*/
+
+  /*var addGuestTo = function(username, party, cb) {
+    var query = {_id: party._id};
+    var action = {$push: {"guests": username}};
+    Party.update(query, action, {safe: true, upsert: true}, cb)
+  };*/
+
   router.post('/parties/:party', auth, function(req, res, next) {
-    var query = {"guests": String(req.payload.username)};
-    var remove = {"guests": [String(req.payload.username)]};
-    Party.update(query, {$pullAll: remove}, {multi: true}, function(err, raw) {
+    Party.removeGuestFromAll(req.payload.username, function(err, raw) {
       if (err) return next(err);
-      console.log(raw);
-      req.party.addGuest(req.payload.username, function(err, party) {
+      Party.addGuest(req.payload.username, req.party, function(err, party) {
         if (err) return next(err);
-        console.log(req.party);
+
         res.json(party);
       });
     });
@@ -221,10 +241,9 @@ var returnRouter = function(io) {
     request.save(function(err, request){
       if(err){ return next(err); }
 
-      req.party.requests.push(request);
-      req.party.save(function(err, party) {
+      Party.addRequest(request, req.party, function(err, party) {
         if(err){ return next(err); }
-
+        io.emit('request', req.party._id);
         res.json(request);
       });
     });
@@ -264,7 +283,7 @@ var returnRouter = function(io) {
       req.request = request;
       return next();
     });
-  });
+  })
 
   router.put('/parties/:party/requests/:request/skip', auth, function(req, res, next) {
     if (req.party.guests.indexOf(req.payload.username) < 0) {
@@ -278,26 +297,11 @@ var returnRouter = function(io) {
           return res.status(400).json({message: "Your request does not match current request"});
         }
         else {
-          //setTimeout(function() {
-          var i = req.request.skips.indexOf(req.payload.username);
-          var update;
-          if (i < 0) {
-            update = {$push: {skips: req.payload.username}};
-          }
-          else {
-            update = {$pull: {skips: req.payload.username}};
-          }
-          Request.findByIdAndUpdate(
-            req.request._id,
-            update,
-            {safe: true, upsert: true},
-            function(err, request) {
-          //req.request.skip(req.payload.username, function(err, request) {
+          Request.toggleSkip(req.payload.username, req.request, function(err, request) {
             if (err) { return next(err); }
             io.emit('skip', request);
             res.json(request);
           });
-          //}, 10000); 
         }
       });
     }
@@ -307,7 +311,7 @@ var returnRouter = function(io) {
     if (req.party.host == req.payload.username) {
       req.request.setPlayed(function(err, request) {
         if (err) { return next(err); }
-        io.emit('played', req.party);
+        io.emit('played', req.party._id);
         res.json(request);
       }); 
     }

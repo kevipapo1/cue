@@ -6,11 +6,7 @@
   <script src="https://ajax.googleapis.com/ajax/libs/jquery/1.12.4/jquery.min.js"></script>
   <script src="https://connect.soundcloud.com/sdk/sdk-3.1.2.js"></script>
   <script src="https://w.soundcloud.com/player/api.js"></script>
-  <!--script>
-    SC.initialize({
-      client_id: '380a8297f1c8b75c7705bfde9bb6f44f'
-    });
-  </script-->
+  <script src="https://apis.google.com/js/api.js"></script>
   <script src="/socket.io/socket.io.js"></script>
   <script>
     var socket = io();
@@ -22,6 +18,7 @@
   <script src="http://ajax.googleapis.com/ajax/libs/angularjs/1.2.19/angular.min.js"></script>
   <script src="//cdnjs.cloudflare.com/ajax/libs/angular-ui-router/0.2.10/angular-ui-router.js"></script>
   <script src="javascripts/angularApp.js"></script>
+  <!--script src="https://www.youtube.com/iframe_api"></script-->
   <style>
     .glyphicon-fast-forward {
       cursor:pointer
@@ -29,6 +26,10 @@
 
     .selected {
       color: blue;
+    }
+
+    .grayed-out {
+      color: gray;
     }
   </style>
 </head>
@@ -112,13 +113,16 @@
       </h5>
     </div>
 
-    <div id="player">
+    <div id="playerWrapper">
+      <div id="player">
+        <!--Some stuff-->
+      </div>
     </div>
     <div style="text-align: center;">
-      <span ng-if="current.data">{{ current.data.user.username}} - {{ current.data.title }}</span>
+      <span ng-if="current.data">{{ current.request.artist}} - {{ current.request.name }}</span>
       <br>
       <span class="glyphicon glyphicon-thumbs-down" ng-class="{'selected': isSkipped()}" ng-click="skip(current.request)" />
-      <span ng-show="isHost" class="glyphicon glyphicon-play" ng-click="play()" />
+      <span ng-show="isHost" class="glyphicon glyphicon-play" ng-class="{'selected': isPlaying}" ng-click="play()" />
       <span ng-show="isHost" class="glyphicon glyphicon-fast-forward" ng-click="playNext()" />
       <br>
       {{ current.request.skips }}
@@ -151,8 +155,9 @@
         <button type="submit" class="btn btn-primary">Search</button>
       </form>
       <div id="results">
-        <div class="item" ng-repeat="result in results" ng-click="addRequest(result.permalink_url)">
-          {{ result.title }}
+        <div class="item" ng-repeat="result in results" ng-click="addRequest(result)">
+          <img src="{{ result.artwork }}" />
+          {{ result.name }}
         </div>
       </div>
       <button class="btn btn-primary" ng-click="refresh()">Refresh</button>

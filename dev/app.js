@@ -35,6 +35,7 @@ app.set('http', http);
 var numConnections = 0;
 io.on('connection', function(socket){
   console.log("socket id: " + socket.id);
+  console.log(socket);
   numConnections++
   io.emit('connected', numConnections);
   socket.on('disconnect', function(){

@@ -1,5 +1,12 @@
 var app = angular.module('flapperNews', ['ui.router']);
 
+app.constant('CONST', {
+	SVC: {
+		SOUNDCLOUD: 0,
+		YOUTUBE: 1	
+	}
+});
+
 app.config(['$stateProvider', '$urlRouterProvider',
 function($stateProvider, $urlRouterProvider) {
 
@@ -203,31 +210,17 @@ function($http, auth) {
 app.factory('current', ['$q', 'parties',
 function($q, parties) {
 	var o = {
-		request: null,
-		data: null
+		request: null
 	};
 
 	var get = function(party) {
-		console.log(parties);
 		var deferred = $q.defer();
 		var current = {
-			request: null,
-			data: null
+			request: null
 		};
 		parties.getCurrentRequest(party).then(function(request) {
 			current.request = request;
-			console.log(request);
-			console.log(!request);
-			if (!request) {
-				current.data = null;
-				deferred.resolve(current);
-			}
-			else {
-				SC.resolve(request.url).then(function(data) {
-					current.data = data;
-					deferred.resolve(current);
-				});
-			}
+			deferred.resolve(current);
 		});
 		return deferred.promise;
 	}
@@ -235,7 +228,6 @@ function($q, parties) {
 	o.update = function(party) {
 		return get(party).then(function(current) {
 			o.request = current.request;
-			o.data = current.data;
 		});
 	};
 
@@ -285,7 +277,7 @@ function() {
 		});
 	}
 
-	o.generateRequest = function(url) {
+	/*o.generateRequest = function(url) {
 		return SC.resolve(url).then(function(data) {
 			var request = {
 				url : url,
@@ -295,7 +287,193 @@ function() {
 			};
 			return request;
 		});
+	}*/
+
+	return o;
+}]);
+
+app.factory('youtubeSvc', [
+function() {
+	var o = {};
+
+	gapi.load('client', function() {
+		gapi.client.load('youtube', 'v3', function() {
+			gapi.client.setApiKey('AIzaSyDIRFu77dW_f6zl6H2domiqkMDy7_1KYH8');
+		});
+	});
+
+	o.search = function(query, cb) {
+		var request = gapi.client.youtube.search.list({
+			q: query,
+			part: 'snippet',
+			type: 'video',
+			videoCategoryId: '10'
+		});
+		request.execute(cb);
 	}
+
+	return o;
+}]);
+
+app.factory('musicSvc', ['$q', 'CONST', 'soundcloudSvc', 'youtubeSvc', 
+function($q, CONST, soundcloudSvc, youtubeSvc) {
+	var o = {};
+
+	o.search = function(query) {
+		var d = $q.defer();
+		var deferSC = $q.defer();
+		var deferYT = $q.defer();
+
+		soundcloudSvc.search(query).then(function(tracks) {
+			deferSC.resolve(tracks);
+		});
+		youtubeSvc.search(query, function(response) {
+			deferYT.resolve(response.items);
+		});
+
+		$q.all([deferSC.promise, deferYT.promise]).then(function(data) {
+			console.log(data[0]);
+			console.log(data[1]);
+			var tracks = [];
+			for (var i = 0; i < data[0].length; i++) {
+				var track = {
+					name: data[0][i].title,
+					artist: data[0][i].user.username,
+					artwork: data[0][i].artwork_url,
+					url: data[0][i].id,
+					service: CONST.SVC.SOUNDCLOUD
+				}
+				tracks.push(track);
+			}
+			for (var i = 0; i < data[1].length; i++) {
+				var track = {
+					name: data[1][i].snippet.title,
+					artist: data[1][i].snippet.channelTitle,
+					artwork: data[1][i].snippet.thumbnails.default.url,
+					url: data[1][i].id.videoId,
+					service: CONST.SVC.YOUTUBE
+				}
+				tracks.push(track);
+			}
+			d.resolve(tracks);
+		});
+
+		return d.promise;
+	}
+
+	return o;
+}]);
+
+app.factory('playerSvc', ['$q', '$window', '$rootScope', 'CONST', 'parties', 
+function($q, $window, $rootScope, CONST, parties) {
+	var o = {
+		service: null,
+		player: null,
+		soundcloud: {},
+		youtube: {}
+	};
+
+	// Load YouTube IFrame API
+	var tag = document.createElement('script');
+	tag.src = "https://www.youtube.com/iframe_api";
+	var firstScriptTag = document.getElementsByTagName('script')[0];
+	firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
+	$window.onYouTubeIframeAPIReady = function() {
+		console.log("YouTube IFrame API ready");
+  };
+
+  // Example of event control in IFrame API
+  /*var done = false;
+  var onPlayerStateChange = function(event) {
+    if (event.data == YT.PlayerState.PLAYING && !done) {
+      setTimeout(stopVideo, 6000);
+      done = true;
+    }
+  };
+  var stopVideo = function() {
+    player.stopVideo();
+  };*/
+
+	o.soundcloud.play = function(track) {
+		var d = $q.defer();
+		SC.get('/tracks/' + track.url).then(function(data) {
+			SC.oEmbed(data.permalink_url, { auto_play: true }).then(function(oEmbed) {
+				var widget = $(oEmbed.html).attr("id", "widget");
+				$("#player").append(widget);
+				o.player = SC.Widget("widget").bind(SC.Widget.Events.FINISH, function() {
+					$rootScope.$emit('finish');
+				});
+				d.resolve();
+			});
+		});
+		/*SC.stream('/tracks/' + track.url).then(function(player) {
+			o.player = player;
+			window['player'] = player;
+			o.player.play();
+		});*/
+		return d.promise;
+	};
+  o.youtube.play = function(track) {
+  	var d = $q.defer();
+		o.player = new YT.Player('player', {
+      height: '390',
+      width: '640',
+      videoId: track.url,
+      events: {
+        'onReady': function(event) {
+        	event.target.playVideo();
+        	d.resolve()
+        },
+        'onStateChange': function(event) {
+        	if (event.data == YT.PlayerState.ENDED) {
+        		$rootScope.$emit('finish');
+        	}
+        }
+      }
+    });
+    return d.promise;
+	};
+  o.play = function(track) {
+  	var d = $q.defer();
+  	o.service = track.service;
+  	switch (o.service) {
+  		case CONST.SVC.SOUNDCLOUD:
+  		o.soundcloud.play(track).then(function() {
+  			d.resolve();
+  		});
+  		break;
+  		case CONST.SVC.YOUTUBE:
+  		o.youtube.play(track).then(function() {
+  			d.resolve();
+  		});
+  		break;
+  	}
+  	return d.promise;
+  };
+
+  o.playNext = function(party, current, isHost) {
+  	o.player = null;
+		$("#playerWrapper").empty().append('<div id="player"></div>');
+		if (isHost && current.request) {
+			parties.setPlayed(party, current.request);
+		}
+  };
+
+  o.togglePlay = function() {
+  	switch (o.service) {
+  		case CONST.SVC.SOUNDCLOUD:
+  		o.player.toggle();
+  		break;
+  		case CONST.SVC.YOUTUBE:
+  		var state = o.player.getPlayerState();
+  		if (state == YT.PlayerState.PLAYING) {
+  			o.player.pauseVideo();
+  		}
+  		else {
+  			o.player.playVideo();
+  		}
+  	}
+  }
 
 	return o;
 }]);
@@ -337,16 +515,15 @@ function($scope, $state, parties, geolocationSvc, auth) {
 	};
 }]);
 
-app.controller('PartyCtrl', ['$scope', 'parties', 'party', 'current', 'soundcloudSvc', 'auth',
-function($scope, parties, party, current, soundcloudSvc, auth) {
+app.controller('PartyCtrl', ['$scope', '$rootScope', 'parties', 'party', 'current', 'musicSvc', 'playerSvc', 'auth',
+function($scope, $rootScope, parties, party, current, musicSvc, playerSvc, auth) {
 	$scope.party = party;
 	$scope.current = current;
-	$scope.current.update(party);
-	$scope.playing = false;
 	$scope.results = [];
 
 	$scope.isLoggedIn = auth.isLoggedIn;
 	$scope.isHost = (party.host == auth.currentUser());
+	$scope.isPlaying = false;
 	$scope.isSkipped = function() {
 		if ($scope.current.request)
 			return $scope.current.request.skips.indexOf(auth.currentUser()) >= 0;
@@ -354,12 +531,10 @@ function($scope, parties, party, current, soundcloudSvc, auth) {
 			return false;
 	};
 
-	$scope.addRequest = function(url) {
-		soundcloudSvc.generateRequest(url).then(function(request) {
-			parties.addRequest(party._id, request).success(function(request) {
-				$scope.party.requests.push(request);
-				$scope.current.update(party);
-			});
+	$scope.addRequest = function(request) {
+		parties.addRequest(party._id, request).success(function(request) {
+			$scope.party.requests.push(request);
+			$scope.current.update(party);
 		});
 	};
 	$scope.skip = function() {
@@ -369,42 +544,56 @@ function($scope, parties, party, current, soundcloudSvc, auth) {
 	};
 	$scope.play = function() {
 		if ($scope.isHost && $scope.current.request) {
-			$scope.playing = true;
-			var track_url = $scope.current.request.url;
-			SC.oEmbed(track_url, { auto_play: true }).then(function(oEmbed) {
-				var widget = $(oEmbed.html).attr("id", "widget");
-				$("#player").append(widget);
-				SC.Widget("widget").bind(SC.Widget.Events.FINISH, function() {
-					$scope.playNext();
+			if (playerSvc.player) {
+				playerSvc.togglePlay();
+				$scope.isPlaying = !$scope.isPlaying;
+			}
+			else {
+				playerSvc.play($scope.current.request).then(function() {
+					$scope.isPlaying = true;
 				});
-			});	
+			}
 		}
 		else {
-			$scope.playing = false;
+			$scope.isPlaying = false;
 		}
 	}
 	$scope.playNext = function() {
-		console.log("playNext");
-		$("#player").empty();
-		if ($scope.isHost && $scope.current.request) {
-			parties.setPlayed(party, $scope.current.request);	
-		}
+		playerSvc.playNext(party, $scope.current, $scope.isHost)
 	}
-
 	$scope.search = function(query) {
-		soundcloudSvc.search(query).then(function(tracks) {
-			$scope.$apply(function() {
-				$scope.results = tracks;
-			});
+		musicSvc.search(query).then(function(tracks) {
+			$scope.results = tracks;
+			console.log(tracks);
 		});
 	}
-
 	$scope.refresh = function() {
 		return parties.get(party._id).then(function(data) {
 			$scope.party = data;
 		});
 	}
 
+	$rootScope.$on('finish', function() {
+		$scope.playNext();
+	});
+	var updateAndPlay = function(partyId) {
+		if (partyId == $scope.party._id) {
+			$scope.refresh();
+			var play = false;
+			if (!$scope.current.request) play = true;
+			$scope.current.update(party).then(function() {
+				if ($scope.isPlaying && !playerSvc.player || play) {
+					$scope.play();
+				}
+			});
+		}
+	}
+	socket.on('request', function(partyId) {
+		updateAndPlay(partyId);
+	});
+	socket.on('played', function(partyId) {
+		updateAndPlay(partyId);
+	});
 	socket.on('skip', function(data) {
 		if (data._id == $scope.current.request._id) {
 			$scope.$apply(function() {
@@ -416,22 +605,12 @@ function($scope, parties, party, current, soundcloudSvc, auth) {
 		}
 	});
 
-	socket.on('played', function(party) {
-		if (party._id == $scope.party._id) {
-			$scope.refresh();
-			$scope.current.update(party).then(function() {
-				if ($scope.playing) {
-					$scope.play();
-				}
-			});
-		}
-	})
+	$scope.current.update(party);
 
 }]);
 
 app.controller('AuthCtrl', ['$scope', '$state', 'auth',
 function($scope, $state, auth) {
-	$scope.user = {};
 
 	$scope.register = function() {
 		auth.register($scope.user).error(function(error) {
@@ -442,6 +621,8 @@ function($scope, $state, auth) {
 	};
 
 	$scope.logIn = function() {
+		$scope.user.socket = socket.id;
+		console.log($scope.user);
 		auth.logIn($scope.user).error(function(error) {
 			$scope.error = error;
 		}).then(function() {

@@ -4,25 +4,6 @@ var app = require('../app');
 
 var express = require('express');
 
-/*var http = require('http').Server(app);
-var io = require('socket.io')(http);
-var numConnections = 0;
-io.on('connection', function(socket){
-  console.log("socket id: " + socket.id);
-  numConnections++
-  io.emit('connected', numConnections);
-  socket.on('disconnect', function(){
-    numConnections--;
-    io.emit('connected', numConnections);
-  });
-  socket.on('skip', function(data) {
-    io.emit('skip', data);
-  });
-  socket.on('create', function(token) {
-    console.log(token);
-  });
-});*/
-
 app.set('port', process.env.PORT || 3000);
 
 var server = app.get('http').listen(app.get('port'), function() {
