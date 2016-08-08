@@ -263,7 +263,9 @@ function($q, $window) {
 
 app.factory('soundcloudSvc', [
 function() {
-	var o = {};
+	var o = {
+
+	};
 
 	SC.initialize({
     client_id: '380a8297f1c8b75c7705bfde9bb6f44f'
@@ -271,11 +273,13 @@ function() {
 
 	o.search = function(query) {
 		return SC.get('/tracks', {
-		  q: query
-		}).then(function(tracks) {
-			return tracks;
+		  q: query,
+		  limit: 5,
+		  linked_partitioning: 1
+		}).then(function(response) {
+			return response;
 		});
-	}
+	};
 
 	/*o.generateRequest = function(url) {
 		return SC.resolve(url).then(function(data) {
@@ -302,64 +306,106 @@ function() {
 		});
 	});
 
-	o.search = function(query, cb) {
-		var request = gapi.client.youtube.search.list({
+	o.search = function(query, cb, token) {
+		var options = {
 			q: query,
 			part: 'snippet',
 			type: 'video',
-			videoCategoryId: '10'
-		});
+			videoCategoryId: '10',
+			maxResults: 5,
+		};
+		if (token) options.pageToken = token;
+		var request = gapi.client.youtube.search.list(options);
 		request.execute(cb);
 	}
 
 	return o;
 }]);
 
-app.factory('musicSvc', ['$q', 'CONST', 'soundcloudSvc', 'youtubeSvc', 
-function($q, CONST, soundcloudSvc, youtubeSvc) {
-	var o = {};
+app.factory('musicSvc', ['$q', '$http', 'CONST', 'soundcloudSvc', 'youtubeSvc', 
+function($q, $http, CONST, soundcloudSvc, youtubeSvc) {
+	var o = {
+		query: null,
+		nextPage: {
+			soundcloud: null,
+			youtube: null
+		}
+	};
+
+	var generateTracks = function(data) {
+		var tracks = [];
+		for (var i = 0; i < data[0].length; i++) {
+			var track = {
+				name: data[0][i].title,
+				artist: data[0][i].user.username,
+				artwork: data[0][i].artwork_url,
+				url: data[0][i].id,
+				service: CONST.SVC.SOUNDCLOUD
+			}
+			tracks.push(track);
+		}
+		for (var i = 0; i < data[1].length; i++) {
+			var track = {
+				name: data[1][i].snippet.title,
+				artist: data[1][i].snippet.channelTitle,
+				artwork: data[1][i].snippet.thumbnails.default.url,
+				url: data[1][i].id.videoId,
+				service: CONST.SVC.YOUTUBE
+			}
+			tracks.push(track);
+		}
+		return tracks;
+	};
 
 	o.search = function(query) {
+		o.query = query;
 		var d = $q.defer();
 		var deferSC = $q.defer();
 		var deferYT = $q.defer();
 
-		soundcloudSvc.search(query).then(function(tracks) {
-			deferSC.resolve(tracks);
+		soundcloudSvc.search(query).then(function(response) {
+			console.log("SC", response);
+			o.nextPage.soundcloud = response.next_href;
+			deferSC.resolve(response.collection);
 		});
 		youtubeSvc.search(query, function(response) {
+			console.log("YT", response);
+			o.nextPage.youtube = response.nextPageToken;
 			deferYT.resolve(response.items);
 		});
 
 		$q.all([deferSC.promise, deferYT.promise]).then(function(data) {
-			console.log(data[0]);
-			console.log(data[1]);
-			var tracks = [];
-			for (var i = 0; i < data[0].length; i++) {
-				var track = {
-					name: data[0][i].title,
-					artist: data[0][i].user.username,
-					artwork: data[0][i].artwork_url,
-					url: data[0][i].id,
-					service: CONST.SVC.SOUNDCLOUD
-				}
-				tracks.push(track);
-			}
-			for (var i = 0; i < data[1].length; i++) {
-				var track = {
-					name: data[1][i].snippet.title,
-					artist: data[1][i].snippet.channelTitle,
-					artwork: data[1][i].snippet.thumbnails.default.url,
-					url: data[1][i].id.videoId,
-					service: CONST.SVC.YOUTUBE
-				}
-				tracks.push(track);
-			}
+			var tracks = generateTracks(data);
 			d.resolve(tracks);
 		});
 
 		return d.promise;
-	}
+	};
+
+	o.next = function() {
+		var d = $q.defer();
+		var deferSC = $q.defer();
+		var deferYT = $q.defer();
+
+		$http.get(o.nextPage.soundcloud).then(function(response) {
+			console.log("SC", response);
+			o.nextPage.soundcloud = response.data.next_href;
+			deferSC.resolve(response.data.collection);
+		});
+		youtubeSvc.search(o.query, function(response) {
+			console.log("YT", response);
+			o.nextPage.youtube = response.nextPageToken;
+			deferYT.resolve(response.items);
+		}, o.nextPage.youtube);
+
+		$q.all([deferSC.promise, deferYT.promise]).then(function(data) {
+			console.log(data);
+			var tracks = generateTracks(data);
+			d.resolve(tracks);
+		});
+
+		return d.promise;
+	};
 
 	return o;
 }]);
@@ -557,21 +603,27 @@ function($scope, $rootScope, parties, party, current, musicSvc, playerSvc, auth)
 		else {
 			$scope.isPlaying = false;
 		}
-	}
+	};
 	$scope.playNext = function() {
 		playerSvc.playNext(party, $scope.current, $scope.isHost)
-	}
+	};
 	$scope.search = function(query) {
 		musicSvc.search(query).then(function(tracks) {
 			$scope.results = tracks;
 			console.log(tracks);
 		});
-	}
+	};
+	$scope.next = function() {
+		musicSvc.next().then(function(tracks) {
+			$scope.results = $scope.results.concat(tracks);
+			console.log(tracks);
+		});
+	};
 	$scope.refresh = function() {
 		return parties.get(party._id).then(function(data) {
 			$scope.party = data;
 		});
-	}
+	};
 
 	$rootScope.$on('finish', function() {
 		$scope.playNext();
