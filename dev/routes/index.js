@@ -138,7 +138,7 @@ var returnRouter = function(io) {
     user.save(function (err){
       if(err){ return next(err); }
 
-      return res.json({token: user.generateJWT()})
+      return res.json({token: user.generateJWT()});
     });
   });
 
@@ -166,7 +166,8 @@ var returnRouter = function(io) {
             return res.json({token: user.generateJWT()});
           }
         );
-      } else {
+      }
+      else {
         return res.status(401).json(info);
       }
     })(req, res, next);
@@ -175,10 +176,8 @@ var returnRouter = function(io) {
   /******* Cue routes *******/
 
   router.get('/parties', function(req, res, next) {
-    Party.find(function(err, parties) {
-      if (err) {
-        return next(err);
-      }
+    Party.findByLocation(req.query, function(err, parties) {
+      if (err) { return next(err); }
       res.json(parties);
     });
   });
@@ -210,30 +209,30 @@ var returnRouter = function(io) {
     });
   });
 
-  /*var removeGuest = function(username, cb) {
-    var query = {"guests": username};
-    var action = {$pullAll: {"guests": [username]}};
-    Party.update(query, action, {multi: true}, cb);
-  };*/
-
-  /*var addGuestTo = function(username, party, cb) {
-    var query = {_id: party._id};
-    var action = {$push: {"guests": username}};
-    Party.update(query, action, {safe: true, upsert: true}, cb)
-  };*/
-
   router.post('/parties/:party', auth, function(req, res, next) {
-    Party.removeGuestFromAll(req.payload.username, function(err, raw) {
-      if (err) return next(err);
-      Party.addGuest(req.payload.username, req.party, function(err, party) {
+    Party.findByLocation(req.body, function(err, parties) {
+      // move to static schema method findByIdAndLocation
+      var found = false;
+      for (var i = 0; i < parties.length && !found; i++) {
+        if (String(parties[i]._id) == String(req.party._id)) {
+          found = true;
+        }
+      }
+      if (!found) { return res.status(400).json({message: 'Not in range'}); }
+      // END move
+      Party.removeGuestFromAll(req.payload.username, function(err, raw) {
         if (err) return next(err);
+        Party.addGuest(req.payload.username, req.party, function(err, party) {
+          if (err) return next(err);
 
-        res.json(party);
+          res.json(party);
+        });
       });
     });
   });
 
   router.post('/parties/:party/requests', auth, function(req, res, next) {
+    console.log(req.body);
     var request = new Request(req.body);
     request.party = req.party;
     request.requester = req.payload.username;

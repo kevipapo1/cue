@@ -135,15 +135,17 @@ function($http, $window) {
 	return auth;
 }]);
 
-app.factory('parties', ['$http', 'auth',
-function($http, auth) {
+app.factory('parties', ['$http', 'auth', 'geolocationSvc',
+function($http, auth, geolocationSvc) {
 	var o = {
 		parties : []
 	};
 
 	o.getAll = function() {
-		return $http.get('/parties').success(function(data) {
-			angular.copy(data, o.parties);
+		return geolocationSvc.getLocation().then(function(position) {
+			return $http.get('/parties', {params: position}).success(function(data) {
+				angular.copy(data, o.parties);
+			});
 		});
 	};
 	//now we'll need to create new posts
@@ -154,7 +156,7 @@ function($http, auth) {
 	o.create = function(party) {
 	  return $http.post('/parties', party, {
 	    headers: {Authorization: 'Bearer '+auth.getToken()}
-	  }).success(function(data){
+	  }).success(function(data) {
 	    o.parties.push(data);
 	  });
 	};
@@ -169,10 +171,18 @@ function($http, auth) {
 		});
 	};
 	o.connect = function(id) {
-		return $http.post('/parties/' + id, null, {
-			headers: {Authorization: 'Bearer ' + auth.getToken()}
-		}).then(function(res) {
-			console.log(res.data);
+		var test = {
+			a: 1,
+			b: 2,
+			c: 3
+		};
+		return geolocationSvc.getLocation().then(function(position) {
+			console.log(position);
+			return $http.post('/parties/' + id, position, {
+				headers: {Authorization: 'Bearer ' + auth.getToken()}
+			}).then(function(res) {
+				console.log(res.data);
+			});
 		});
 	}
 	o.getCurrentRequest = function(party) {
@@ -249,7 +259,13 @@ function($q, $window) {
 		else {
 			$window.navigator.geolocation.getCurrentPosition(
 				function(position) {
-					deferred.resolve(position);
+					var pos = {
+						lat: position.coords.latitude,
+						lng: position.coords.longitude,
+						acc: position.coords.accuracy,
+						timestamp: position.timestamp
+					};
+					deferred.resolve(pos);
 				}, function(err) {
 					deferred.reject(err);
 				}
@@ -547,10 +563,11 @@ function($scope, $state, parties, geolocationSvc, auth) {
 			return;
 		}
 		geolocationSvc.getLocation().then(function(position) {
+			var lat = position.lat;
+			var lng = position.lng;
 			parties.create({
 				name : $scope.name,
-				lat : position.coords.latitude,
-				lng : position.coords.longitude
+				loc: [lng, lat]
 			}).success(function(data) {
 				socket.emit('create', auth.getToken());
 				$state.go('party', {id: data._id});

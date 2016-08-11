@@ -4,25 +4,14 @@ var PartySchema = new mongoose.Schema({
 	host: String,
 	guests: [String],
   name: String,
-  lat: Number,
-  lng: Number,
+  loc: {type: [Number], required: true, index: '2dsphere'},
   requests: [{type: mongoose.Schema.Types.ObjectId, ref: 'Request'}]
 });
 
-/*PartySchema.methods.addGuest = function(username, cb) {
-	//if (this.guests.indexOf(String(username)) == -1) {
-		this.guests.push(String(username));
-	//}
-	this.save(cb);
-};*/
-
-/*PartySchema.methods.removeGuest = function(username, cb) {
-	var i = this.guests.indexOf(String(username));
-	if (i != -1) {
-		this.guests.splice(i, 1);
-	}
-	this.save(cb);
-};*/
+PartySchema.statics.findByLocation = function(position, cb) {
+  var query = {loc: {$geoWithin: { $centerSphere: [[Number(position.lng), Number(position.lat)], 0.1/3963.2] }}};
+  this.find(query, cb);
+};
 
 PartySchema.statics.removeGuestFromAll = function(username, cb) {
   var query = {"guests": username};
@@ -40,6 +29,6 @@ PartySchema.statics.addRequest = function(request, party, cb) {
   var query = {_id: party._id};
   var action = {$push: {"requests": request}};
   this.update(query, action, {safe: true, upsert: true}, cb);
-}
+};
 
 mongoose.model('Party', PartySchema);
