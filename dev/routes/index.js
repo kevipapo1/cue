@@ -9,6 +9,7 @@ var Comment = mongoose.model('Comment');
 var User = mongoose.model('User');
 var Request = mongoose.model('Request');
 var Party = mongoose.model('Party');
+var PartyData = mongoose.model('PartyData');
 
 var auth = jwt({secret: 'SECRET', userProperty: 'payload'});
 
@@ -152,7 +153,7 @@ var returnRouter = function(io) {
     }
 
     console.log('calling passport');
-    passport.authenticate('local', function(err, user, info){
+    passport.authenticate('user', function(err, user, info){
       if (err) { return next(err); }
 
       if (user) {
@@ -183,12 +184,33 @@ var returnRouter = function(io) {
   });
 
   router.post('/parties', auth, function(req, res, next) {
+    var password = req.body.password;
+    req.body.password = undefined;
+    req.body.host = req.payload.username;
     var party = new Party(req.body);
-    party.host = req.payload.username;
-    party.save(function(err, party) {
-      if (err) { return next(err); }
-      res.json(party);
-    });
+
+    function saveParty() {
+      party.save(function(err, party) {
+        if (err) { return next(err); }
+        res.json(party);
+      });
+    }
+
+    if (password) {
+      var data = new PartyData({_id: party._id});
+      data.setPassword(password);
+      data.save(function(err, data) {
+        if (err) return next(err);
+        party.hasPassword = true;
+        return saveParty();
+      });
+    }
+    else {
+      party.hasPassword = false;
+      return saveParty();
+    }
+
+    
   });
 
   router.param('party', function(req, res, next, id) {
@@ -212,22 +234,40 @@ var returnRouter = function(io) {
   router.post('/parties/:party', auth, function(req, res, next) {
     Party.findByLocation(req.body, function(err, parties) {
       // move to static schema method findByIdAndLocation
-      var found = false;
-      for (var i = 0; i < parties.length && !found; i++) {
+      var party = null;
+      for (var i = 0; i < parties.length && !party; i++) {
         if (String(parties[i]._id) == String(req.party._id)) {
-          found = true;
+          party = parties[i];
         }
       }
-      if (!found) { return res.status(400).json({message: 'Not in range'}); }
+      if (!party) { return res.status(400).json({message: 'Not in range'}); }
       // END move
-      Party.removeGuestFromAll(req.payload.username, function(err, raw) {
-        if (err) return next(err);
-        Party.addGuest(req.payload.username, req.party, function(err, party) {
-          if (err) return next(err);
 
-          res.json(party);
+      function connectToParty() {
+        Party.removeGuestFromAll(req.payload.username, function(err, raw) {
+          if (err) return next(err);
+          Party.addGuest(req.payload.username, req.party, function(err, party) {
+            if (err) return next(err);
+            res.json(party);
+          });
         });
-      });
+      }
+
+      if (party.hasPassword && party.guests.indexOf(req.payload.username) < 0) {
+        req.body.username = String(party._id);
+        passport.authenticate('party', function(err, data, info) {
+          if (err) { return next(err); }
+          if (data) {
+            connectToParty();
+          }
+          else {
+            return res.status(401).json(info);
+          }
+        })(req, res, next);
+      }
+      else {
+        connectToParty();
+      }
     });
   });
 

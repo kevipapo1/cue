@@ -145,6 +145,7 @@ function($http, auth, geolocationSvc) {
 		return geolocationSvc.getLocation().then(function(position) {
 			return $http.get('/parties', {params: position}).success(function(data) {
 				angular.copy(data, o.parties);
+				console.log(data);
 			});
 		});
 	};
@@ -160,25 +161,22 @@ function($http, auth, geolocationSvc) {
 	    o.parties.push(data);
 	  });
 	};
-	//grab a single post from the server
+	//grab a single party from the server
 	o.get = function(id) {
 		//use the express route to grab this post and return the response
 		//from that route, which is a json of the post data
 		//.then is a promise, a kind of newly native thing in JS that upon cursory research
 		//looks friggin sweet; TODO Learn to use them like a boss.  First, this.
 		return $http.get('/parties/' + id).then(function(res) {
+			console.log(res.data);
 			return res.data;
 		});
 	};
 	o.connect = function(id) {
-		var test = {
-			a: 1,
-			b: 2,
-			c: 3
-		};
-		return geolocationSvc.getLocation().then(function(position) {
-			console.log(position);
-			return $http.post('/parties/' + id, position, {
+		return geolocationSvc.getLocation().then(function(data) {
+			console.log(data);
+			data.password = prompt("Enter the party's password:");
+			return $http.post('/parties/' + id, data, {
 				headers: {Authorization: 'Bearer ' + auth.getToken()}
 			}).then(function(res) {
 				console.log(res.data);
@@ -553,6 +551,7 @@ function($scope, $state, parties, geolocationSvc, auth) {
 	$scope.isLoggedIn = auth.isLoggedIn;
 	//setting title to blank here to prevent empty posts
 	$scope.name = '';
+	$scope.password = '';
 
 	$scope.refresh = function() {
 		parties.getAll();
@@ -567,13 +566,15 @@ function($scope, $state, parties, geolocationSvc, auth) {
 			var lng = position.lng;
 			parties.create({
 				name : $scope.name,
-				loc: [lng, lat]
+				password: ($scope.password ? $scope.password : null),
+				loc: [lng, lat],
 			}).success(function(data) {
 				socket.emit('create', auth.getToken());
 				$state.go('party', {id: data._id});
 			});
 			//clear the values
 			$scope.name = '';
+			$scope.password = '';
 		});
 	};
 }]);

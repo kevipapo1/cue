@@ -24,6 +24,7 @@ require('./models/Comments');
 require('./models/Users');
 require('./models/Requests');
 require('./models/Parties');
+require('./models/PartyData');
 require('./config/passport');
 
 var http = require('http').Server(app);

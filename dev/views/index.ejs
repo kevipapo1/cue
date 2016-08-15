@@ -67,6 +67,7 @@
     <div ng-repeat="party in parties">
       <span style="font-size:20px;margin-left:10px">
         <a href="#/parties/{{party._id}}">
+          <span ng-show="party.hasPassword" class="glyphicon glyphicon-lock" />
           {{party.name}}: {{party.loc}}
         </a>
         <!--span ng-show="post.author">
@@ -81,6 +82,7 @@
 
       <div class="form-group">
         <input type="text" class="form-control" placeholder="Name"  ng-model="name">
+        <input type="password" class="form-control" placeholder="Password (optional)" ng-model="password">
       </div>
 
       <!--div class="form-group">
