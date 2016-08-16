@@ -137,9 +137,44 @@ var returnRouter = function(io) {
     user.setPassword(req.body.password)
 
     user.save(function (err){
-      if(err){ return next(err); }
+      if(err) return next(err); 
 
-      return res.json({token: user.generateJWT()});
+      return res.json({
+        token: user.generateJWT(),
+        isGuest: false
+      });
+    });
+  });
+
+  router.post('/register/guest', function(req, res, next) {
+    var user = new User();
+    user.username = Math.random().toString(36).substring(2,10);
+    user.save(function (err) {
+      if (err) return next(err);
+      return res.json({
+        token: user.generateJWT(),
+        isGuest: true
+      });
+    })
+  });
+
+  router.post('/register/claim', auth, function(req, res, next) {
+    if(!req.body.username || !req.body.password){
+      return res.status(400).json({message: 'Please fill out all fields'});
+    }
+    var user = new User();
+    user.username = req.body.username;
+    user.setPassword(req.body.password);
+    user.save(function(err) {
+      if (err) return next(err);
+      var query = {username: req.payload.username};
+      User.removeUser(req.payload.username, function(err, data) {
+        if (err) return next(err);
+        return res.json({
+          token: user.generateJWT(),
+          isGuest: false
+        });
+      });
     });
   });
 
@@ -164,7 +199,10 @@ var returnRouter = function(io) {
           function(err, user) {
             if (err) { return next(err); }
             console.log(user);
-            return res.json({token: user.generateJWT()});
+            return res.json({
+              token: user.generateJWT(),
+              isGuest: !user.hash
+            });
           }
         );
       }
@@ -184,6 +222,7 @@ var returnRouter = function(io) {
   });
 
   router.post('/parties', auth, function(req, res, next) {
+    console.log(auth);
     var password = req.body.password;
     req.body.password = undefined;
     req.body.host = req.payload.username;
@@ -196,20 +235,25 @@ var returnRouter = function(io) {
       });
     }
 
-    if (password) {
-      var data = new PartyData({_id: party._id});
-      data.setPassword(password);
-      data.save(function(err, data) {
-        if (err) return next(err);
-        party.hasPassword = true;
-        return saveParty();
-      });
-    }
-    else {
-      party.hasPassword = false;
-      return saveParty();
-    }
-
+    User.isGuest(req.payload.username, function(err, isGuest) {
+      console.log(isGuest);
+      if (isGuest) return res.status(400).json({message: 'Guests can\'t create parties'});
+      else {
+        if (password) {
+          var data = new PartyData({_id: party._id});
+          data.setPassword(password);
+          data.save(function(err, data) {
+            if (err) return next(err);
+            party.hasPassword = true;
+            return saveParty();
+          });
+        }
+        else {
+          party.hasPassword = false;
+          return saveParty();
+        }
+      }
+    });
     
   });
 

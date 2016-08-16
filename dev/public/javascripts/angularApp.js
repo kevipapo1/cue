@@ -16,7 +16,7 @@ function($stateProvider, $urlRouterProvider) {
 		controller : 'WelcomeCtrl',
 		onEnter : ['$state', 'auth',
 		function($state, auth) {
-			if (auth.isLoggedIn()) {
+			if (auth.isRegistered()) {
 				$state.go('parties');
 			}
 		}]
@@ -27,7 +27,7 @@ function($stateProvider, $urlRouterProvider) {
 		controller : 'AuthCtrl',
 		onEnter : ['$state', 'auth',
 		function($state, auth) {
-			if (auth.isLoggedIn()) {
+			if (auth.isRegistered()) {
 				$state.go('parties');
 			}
 		}]
@@ -38,7 +38,7 @@ function($stateProvider, $urlRouterProvider) {
 		controller : 'AuthCtrl',
 		onEnter : ['$state', 'auth',
 		function($state, auth) {
-			if (auth.isLoggedIn()) {
+			if (auth.isRegistered()) {
 				$state.go('parties');
 			}
 		}]
@@ -80,31 +80,45 @@ function($stateProvider, $urlRouterProvider) {
 		}
 	});
 
-	$urlRouterProvider.otherwise('login');
+	$urlRouterProvider.otherwise('welcome');
 }]);
 
 app.factory('auth', ['$http', '$window',
 function($http, $window) {
 	var auth = {};
 
-	auth.saveToken = function(token) {
-		$window.localStorage['flapper-news-token'] = token;
+	auth.saveUser = function(data) {
+		$window.localStorage['cue-token'] = data.token;
+		$window.localStorage['cue-isGuest'] = data.isGuest;
 	};
 
 	auth.getToken = function() {
-		return $window.localStorage['flapper-news-token'];
-	}
+		return $window.localStorage['cue-token'];
+	};
 
 	auth.isLoggedIn = function() {
 		var token = auth.getToken();
 
 		if (token) {
-			var payload = JSON.parse($window.atob(token.split('.')[1]));
-
+			var payload = JSON.parse($window.atob(token.split('.')[1]))
 			return payload.exp > Date.now() / 1000;
-		} else {
+		}
+		else {
 			return false;
 		}
+	};
+
+	auth.isGuest = function() {
+		if ($window.localStorage['cue-isGuest']) {
+			return JSON.parse($window.localStorage['cue-isGuest']);
+		}
+		else {
+			return false;
+		}
+	};
+
+	auth.isRegistered = function() {
+		return auth.isLoggedIn() && !auth.isGuest();
 	};
 
 	auth.currentUser = function() {
@@ -117,19 +131,33 @@ function($http, $window) {
 	};
 
 	auth.register = function(user) {
-		return $http.post('/register', user).success(function(data) {
-			auth.saveToken(data.token);
+		console.log(user);
+		var url, o;
+		if (!user) {
+			url = '/register/guest';
+		}
+		else if (auth.isLoggedIn()) {
+			url = '/register/claim';
+			o = {headers: {Authorization: 'Bearer ' + auth.getToken()}};
+		}
+		else {
+			url = '/register';
+		}
+		return $http.post(url, user, o).success(function(data) {
+			console.log(data);
+			auth.saveUser(data);
 		});
 	};
 
 	auth.logIn = function(user) {
 		return $http.post('/login', user).success(function(data) {
-			auth.saveToken(data.token);
+			auth.saveUser(data);
 		});
 	};
 
 	auth.logOut = function() {
-		$window.localStorage.removeItem('flapper-news-token');
+		$window.localStorage.removeItem('cue-token');
+		$window.localStorage.removeItem('cue-isGuest');
 	};
 
 	return auth;
@@ -540,9 +568,15 @@ function($q, $window, $rootScope, CONST, parties) {
 
 
 
-app.controller('WelcomeCtrl', ['$scope', '$state',
-function($scope, $state) {
+app.controller('WelcomeCtrl', ['$scope', '$state', 'auth',
+function($scope, $state, auth) {
 	$scope.message = "Welcome to Cue";
+
+	$scope.guest = function() {
+		auth.register().then(function() {
+			$state.go('parties');
+		});
+	};
 }]);
 
 app.controller('PartiesCtrl', ['$scope', '$state', 'parties', 'geolocationSvc', 'auth',
@@ -703,7 +737,9 @@ function($scope, $state, auth) {
 
 app.controller('NavCtrl', ['$scope', 'auth',
 function($scope, auth) {
-	$scope.isLoggedIn = auth.isLoggedIn;
+	//$scope.isLoggedIn = auth.isLoggedIn;
+	$scope.isGuest = auth.isGuest;
+	$scope.isRegistered = auth.isRegistered;
 	$scope.currentUser = auth.currentUser;
 	$scope.logOut = auth.logOut;
 
