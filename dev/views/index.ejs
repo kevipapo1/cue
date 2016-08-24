@@ -19,6 +19,7 @@
   <script src="javascripts/angularApp.js"></script>
 
   <link href="http://maxcdn.bootstrapcdn.com/bootstrap/3.2.0/css/bootstrap.min.css" rel="stylesheet">
+  <link href="stylesheets/style.css" rel="stylesheet">
   <style>
     .glyphicon-fast-forward {
       cursor:pointer
@@ -39,16 +40,15 @@
       <li ng-show="isGuest()"><a>Guest</a></li>
       <li ng-show="isRegistered()"><a>{{ currentUser() }}</a></li>
       <li ng-show="isRegistered()"><a href="#/" ng-click="logOut()">Log Out</a></li>
+      <li ng-hide="isRegistered()"><a href="#/login">Log In</a></li>
       <!--li ng-hide="isLoggedIn()"><a href="/#/login">Log In</a></li>
       <li ng-hide="isLoggedIn()"><a href="/#/register">Register</a></li-->
       <li><a>Connections: {{ numConnections }}</a></li>
     </ul>
   </nav>
   
-  <div class="row">
-    <div class="col-md-6 col-md-offset-3">
-      <ui-view></ui-view>
-    </div>
+  <div class="container">
+    <ui-view></ui-view>
   </div>
 
   <script type="text/ng-template" id="/welcome.html">
@@ -56,9 +56,15 @@
       <h1>{{ message }}</h1>
     </div>
 
-    <a href="#/login" class="btn btn-default" role="button">Log in</a>
-    <a href="#/register" class="btn btn-default" role="button">Register</a>
-    <button class="btn btn-default" ng-click="guest()">Guest</button>
+    <div class="row">
+      <div class="col-xs-12 col-sm-6 text-center">
+        <a href="#/parties" class="btn btn-default" role="button" style="margin: 10px;">Join a party</a>
+      </div>
+      <div class="col-xs-12 col-sm-6 text-center">
+        <a href="#/parties/create" class="btn btn-default" role="button" style="margin:">Create a party</a>
+      </div>
+      <!--button class="btn btn-default" ng-click="guest()">Guest</button-->
+    </div>
   </script>
 
   <script type="text/ng-template" id="/parties.html">
@@ -78,6 +84,16 @@
       </span>
     </div>
     <button class="btn btn-default" ng-click="refresh()">Refresh</button>
+
+    <div ng-hide="isLoggedIn()">
+      <h3>You need to <a href="/#/login">Log In</a> or <a href="/#/register">Register</a> before you can create a party.</h3>
+    </div>
+  </script>
+
+  <script type="text/ng-template" id="/create.html">
+    <div class="page-header">
+      <h1>Cue</h1>
+    </div>
 
     <form ng-submit="createParty()" ng-show="isLoggedIn()" style="margin-top:30px">
       <h3>Create a new party:</h3>

@@ -237,8 +237,8 @@ var returnRouter = function(io) {
 
     User.isGuest(req.payload.username, function(err, isGuest) {
       console.log(isGuest);
-      if (isGuest) return res.status(400).json({message: 'Guests can\'t create parties'});
-      else {
+      //if (isGuest) return res.status(400).json({message: 'Guests can\'t create parties'});
+      //else {
         if (password) {
           var data = new PartyData({_id: party._id});
           data.setPassword(password);
@@ -252,7 +252,7 @@ var returnRouter = function(io) {
           party.hasPassword = false;
           return saveParty();
         }
-      }
+      //}
     });
     
   });
